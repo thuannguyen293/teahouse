@@ -1,0 +1,7 @@
+Phân tích các điểm yếu, vấn đề tồn đọng trong thiết kế:
+- Bảng Thông tin tài khoản: mật khẩu chưa mã hóa.
+- Mã dự thưởng nên lưu mỗi dòng 1 mã để dễ dàng truy xuất.
+- Có thể chỉ cần dùng user_id ở bảng Điểm thưởng (trường hợp nhân viên có thể đổi số điện thoại)
+- Chưa có quy định nếu nhân viên nhận giải nhưng giải thưởng đó đã hết thì sẽ như thế nào => Cách giải quyết: cho nhận bất kì giải thưởng nào còn.
+- Nhân viên không cần đăng nhập nhưng có thể nhập mã dự thưởng => Nhân viên có thể dò mã dự thưởng khác (giải thưởng vẫn thuộc về user có mã dự thưởng đó)
+- Quy định 100 phần thưởng cho 100 nhân viên nhưng không ràng buộc 1 nhân viên chỉ nhận 1 lần => Cách giải quyết: thêm ràng buộc mỗi người chỉ nhận 1 lần
