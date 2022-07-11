@@ -7,8 +7,10 @@ use Illuminate\Support\Facades\Auth;
 use App\User;
 use App\Reward;
 use App\Gift;
-use App\Point;
-use DB;
+use App\Code;
+use App\Http\Requests\ExchangeGift;
+use App\Report;
+use Illuminate\Support\Facades\DB;
 
 class HomeController extends Controller
 {
@@ -27,74 +29,80 @@ class HomeController extends Controller
      *
      * @return \Illuminate\Contracts\Support\Renderable
      */
-    public function index()
+    public function index(): \Illuminate\Contracts\Support\Renderable
     {
-        $user_id = Auth::id();
-        $user = User::join('points','users.phone_number', '=', 'points.phone_number')->where('users.id', $user_id)->first();
-        $reward = Reward::where('user_id', $user_id)->join('gifts', 'rewards.gift_id', '=', 'gifts.id')->select('gifts.name')->first();
-        return view('home', ['user' => $user, 'reward' => $reward]);
+        $user_id    = Auth::id();
+        $user       = User::where('id', $user_id)->first();
+        $codes      = Code::where('user_id', $user_id)->pluck('code')->toArray();
+        $reward     = Reward::where('user_id', $user_id)->join('gifts', 'rewards.gift_id', '=', 'gifts.id')->select('gifts.name')->first();
+
+        return view('home', [
+            'user' => $user, 
+            'reward' => $reward, 
+            'codes' => $codes
+        ]);
     }
 
-    public function exchangeGift(Request $request){
-        $request->validate([
-            'code' => ['required', 'alpha_num'],
+    /**
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function exchangeGift(ExchangeGift $request): \Illuminate\Http\JsonResponse
+    {
+        $user_id        = Auth::id();
+        $code           = $request->code;
+        $validateCode   = Code::where('user_id', $user_id)
+            ->where('code', $code)
+            ->first();
+
+        //The code is invalid
+        if (!$validateCode) {
+            return response()->json([
+                'status'    => 0,
+                'msg'       => 'Mã dự thưởng không hợp lệ.'
+            ]);
+        }
+
+        //The code is exchanged
+        $isExchanged = Reward::where('user_id', $user_id)->first();
+        if ($isExchanged) {
+            return response()->json([
+                'status' => 0,
+                'msg'    => 'Bạn đã nhận thưởng. Vui lòng nhận tiếp vào đợt sau'
+            ]);
+        }
+
+        $gift = $this->updateGift();
+        $validateCode->delete();
+        Reward::insert([
+            'user_id' => $user_id,
+            'gift_id' => $gift->id
         ]);
-        $rule = config('rule');
-        
-        $code = $request->code;
-        $validateCode = Point::where('code', 'like', '%'.$code.'%')->first();
-        if(!$validateCode){
+
+        return response()->json([
+            'status'    => 1,
+            'msg'       => 'Bạn đã trúng ' . $gift->name,
+            'image'     => $gift->image
+        ]);
+    }
+
+    private function updateGift(): Gift
+    {
+        $rule           = config('rule');
+        $receive_user   = (int) Report::where('meta_key', 'received_user')->pluck('meta_value')->first();
+        $position       = ($receive_user + 1) % 9;
+        $gift_id        = $position ? $rule[$position - 1] : $rule[8];
+        $gift           = Gift::whereId($gift_id)->where('quantity', '>', 0)->first() ?? Gift::orderBy('quantity', 'DESC')->where('quantity', '>', 0)->first();
+        if (!$gift) {
             return response()->json([
                 'status' => 0,
-                'msg' => 'Mã dự thưởng không hợp lệ.'
+                'msg'    => 'Đã hết phần thưởng. Chúc bạn may mắn lần sau'
             ]);
         }
-        $arrCode = explode(',', $validateCode->code); 
-        if(!in_array($code, $arrCode)){
-            return response()->json([
-                'status' => 0,
-                'msg' => 'Mã dự thưởng không hợp lệ.'
-            ]);
-        }else{
-            $user_id = User::where('phone_number', $validateCode->phone_number)->pluck('id')->first();
-            $user = Reward::where('user_id', $user_id)->first();
-            if($user){
-                return response()->json([
-                    'status' => 0,
-                    'msg' => 'Bạn đã nhận thưởng. Vui lòng nhận tiếp vào đợt sau'
-                ]);
-            }
-            $receive_user = (int) DB::table('reports')->where('meta_key', 'received_user')->pluck('meta_value')->first();
-            $position = ($receive_user+1)%9;
-            $gift_id = $rule[$position-1];
-            $gift = Gift::whereId($gift_id)->where('quantity','>', 0)->first();
-            if(!$gift)
-                $gift = Gift::where('quantity','>', 0)->first();
-            if($gift){
-                $gift->quantity = $gift->quantity - 1;
-                $gift->save();
-                DB::table('reports')->where('meta_key', 'received_user')->update(['meta_value' => $receive_user+1]);
-                $tempCode = explode(',', $validateCode->code);
-                if (($key = array_search($code, $tempCode)) !== false) {
-                    unset($tempCode[$key]);
-                }
-                $validateCode->code = implode(',', $tempCode);
-                $validateCode->save();
-                Reward::insert([
-                    'user_id' => $user_id,
-                    'gift_id' => $gift->id
-                ]);
-                return response()->json([
-                    'status' => 1,
-                    'msg' => 'Bạn đã trúng '. $gift->name,
-                    'image' => $gift->image
-                ]);
-            }else{
-                return response()->json([
-                    'status' => 0,
-                    'msg' => 'Đã hết phần thưởng. Chúc bạn may mắn lần sau'
-                ]);
-            }
-        }
+        $gift->quantity = $gift->quantity - 1;
+        $gift->save();
+        Report::where('meta_key', 'received_user')->update(['meta_value' => $receive_user + 1]);
+
+        return $gift;
     }
 }

@@ -4,12 +4,12 @@ namespace App;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Point extends Model
+class Code extends Model
 {
-    protected $table = "points";
+    protected $table = "codes";
 
     protected $fillable = [
-        'phone_number', 'point', 'code', 'store_id',
+        'user_id', 'code', 'store_id',
     ];
     public $timestamps = false;
 }
